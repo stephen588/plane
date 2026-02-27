@@ -14,7 +14,7 @@ import { observer } from "mobx-react";
 import { useParams, useRouter } from "next/navigation";
 import { createRoot } from "react-dom/client";
 import scrollIntoView from "smooth-scroll-into-view-if-needed";
-import { Settings, Share2, LogOut, MoreHorizontal } from "lucide-react";
+import { Settings, Share2, LogOut, MoreHorizontal, FileStack } from "lucide-react";
 import { Disclosure, Transition } from "@headlessui/react";
 // plane imports
 import { EUserPermissions, EUserPermissionsLevel, MEMBER_TRACKER_ELEMENTS } from "@plane/constants";
@@ -24,6 +24,7 @@ import { Logo } from "@plane/propel/emoji-icon-picker";
 import { LinkIcon, ArchiveIcon, ChevronRightIcon } from "@plane/propel/icons";
 import { IconButton } from "@plane/propel/icon-button";
 import { Tooltip } from "@plane/propel/tooltip";
+import { TOAST_TYPE, setToast } from "@plane/propel/toast";
 import { CustomMenu, DropIndicator, DragHandle, ControlLink } from "@plane/ui";
 import { cn } from "@plane/utils";
 // components
@@ -222,6 +223,7 @@ export const SidebarProjectsListItem = observer(function SidebarProjectsListItem
         },
       })
     );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, isLastChild, projectListType, handleOnProjectDrop]);
 
   useEffect(() => {
@@ -241,7 +243,7 @@ export const SidebarProjectsListItem = observer(function SidebarProjectsListItem
       if (projectRef.current) {
         timeoutId = setTimeout(() => {
           if (projectRef.current) {
-            scrollIntoView(projectRef.current, {
+            void scrollIntoView(projectRef.current, {
               behavior: "smooth",
               block: "center",
               scrollMode: "if-needed",
@@ -257,6 +259,40 @@ export const SidebarProjectsListItem = observer(function SidebarProjectsListItem
       }
     };
   }, [URLProjectId, project?.id, setIsProjectListOpen]);
+
+  // TKX: Create Template from project
+  const handleCreateTemplate = async () => {
+    if (!project) return;
+    try {
+      const resp = await fetch(`/templates/api/templates/projects/save-from/${project.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${project.name} Template`,
+          description: `Template created from project ${project.name}`,
+          workspace_id: "0f692c12-0770-4325-a298-902f8036dfe7",
+          include_work_items: true,
+          include_modules: true,
+        }),
+      });
+      if (!resp.ok) {
+        const errData = (await resp.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(errData?.detail ?? "Failed to create template");
+      }
+      setToast({
+        type: TOAST_TYPE.SUCCESS,
+        title: "Template created",
+        message: `"${project.name} Template" saved successfully`,
+      });
+    } catch (err) {
+      console.error("Failed to create template:", err);
+      setToast({
+        type: TOAST_TYPE.ERROR,
+        title: "Error",
+        message: err instanceof Error ? err.message : "Failed to create template",
+      });
+    }
+  };
 
   if (!project) return null;
 
@@ -408,6 +444,13 @@ export const SidebarProjectsListItem = observer(function SidebarProjectsListItem
                       <LinkIcon className="h-3.5 w-3.5 stroke-[1.5]" />
                       <span>{t("copy_link")}</span>
                     </span>
+                  </CustomMenu.MenuItem>
+                  {/* TKX: Create Template */}
+                  <CustomMenu.MenuItem onClick={() => void handleCreateTemplate()}>
+                    <div className="flex items-center justify-start gap-2">
+                      <FileStack className="h-3.5 w-3.5 stroke-[1.5]" />
+                      <span>Create Template</span>
+                    </div>
                   </CustomMenu.MenuItem>
                   {isAuthorized && (
                     <CustomMenu.MenuItem

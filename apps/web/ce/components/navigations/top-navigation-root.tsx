@@ -9,7 +9,7 @@ import { observer } from "mobx-react";
 import { useParams, usePathname } from "next/navigation";
 import { cn } from "@plane/utils";
 import { TopNavPowerK } from "@/components/navigation";
-import { HelpMenuRoot } from "@/components/workspace/sidebar/help-section/root";
+// TKX: Removed HelpMenuRoot import
 import { UserMenuRoot } from "@/components/workspace/sidebar/user-menu-root";
 import { WorkspaceMenuRoot } from "@/components/workspace/sidebar/workspace-menu-root";
 import { useAppRailPreferences } from "@/hooks/use-navigation-preferences";
@@ -18,8 +18,7 @@ import { AppSidebarItem } from "@/components/sidebar/sidebar-item";
 import { InboxIcon } from "@plane/propel/icons";
 import useSWR from "swr";
 import { useWorkspaceNotifications } from "@/hooks/store/notifications";
-// local imports
-import { StarUsOnGitHubLink } from "@/app/(all)/[workspaceSlug]/(projects)/star-us-link";
+// TKX: Removed StarUsOnGitHubLink import
 
 export const TopNavigationRoot = observer(function TopNavigationRoot() {
   // router
@@ -77,8 +76,7 @@ export const TopNavigationRoot = observer(function TopNavigationRoot() {
             }}
           />
         </Tooltip>
-        <HelpMenuRoot />
-        <StarUsOnGitHubLink />
+        {/* TKX: Removed HelpMenuRoot and StarUsOnGitHubLink */}
         <div className="flex items-center justify-center size-8 hover:bg-layer-1-hover rounded-md">
           <UserMenuRoot />
         </div>
