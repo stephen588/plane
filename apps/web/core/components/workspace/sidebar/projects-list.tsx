@@ -63,7 +63,7 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
   const pathname = usePathname();
 
   // TKX: Client grouping
-  const { clients, isLoading: isClientsLoading, unassignedProjectIds, refetch: refetchClients } = useClients();
+  const { clients, isLoading: _isClientsLoading, unassignedProjectIds, refetch: refetchClients } = useClients();
 
   const CLIENT_COLORS = [
     "#6366F1",
@@ -95,8 +95,8 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
       setNewClientName("");
       setNewClientColor("#6366F1");
       setIsCreateClientOpen(false);
-      // Reload page to refresh sidebar with new client
-      setTimeout(() => window.location.reload(), 300);
+      // Refresh client list without page reload
+      refetchClients();
     } catch (err) {
       console.error("Failed to create client:", err);
     } finally {
@@ -124,15 +124,12 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
     const displayedSet = new Set(displayedProjects);
 
     // Build groups for each client
-    const groups = clients
-      .map((client) => {
-        const clientProjectIds = client.projects.map((cp) => cp.project_id).filter((pid) => displayedSet.has(pid));
-        // Sort client projects by the order they appear in displayedProjects
-        clientProjectIds.sort((a, b) => displayedProjects.indexOf(a) - displayedProjects.indexOf(b));
-        return { client, projectIds: clientProjectIds };
-      })
-      .filter((g) => g.projectIds.length > 0);
-
+    const groups = clients.map((client) => {
+      const clientProjectIds = client.projects.map((cp) => cp.project_id).filter((pid) => displayedSet.has(pid));
+      // Sort client projects by the order they appear in displayedProjects
+      clientProjectIds.sort((a, b) => displayedProjects.indexOf(a) - displayedProjects.indexOf(b));
+      return { client, projectIds: clientProjectIds };
+    });
     // Sort groups by client sort_order then name
     groups.sort((a, b) => {
       if (a.client.sort_order !== b.client.sort_order) {
@@ -148,12 +145,13 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
   }, [clients, displayedProjects, unassignedProjectIds]);
 
   const handleCopyText = (projectId: string) => {
-    copyUrlToClipboard(`${workspaceSlug}/projects/${projectId}/issues`).then(() => {
+    void copyUrlToClipboard(`${workspaceSlug}/projects/${projectId}/issues`).then(() => {
       setToast({
         type: TOAST_TYPE.SUCCESS,
         title: t("link_copied"),
         message: t("project_link_copied_to_clipboard"),
       });
+      return undefined;
     });
   };
 
@@ -248,51 +246,67 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
       )}
       {/* TKX: Create Client Modal */}
       {isCreateClientOpen && (
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center"
-          style={{ backgroundColor: "rgba(0,0,0,0.4)" }}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40"
+          onMouseDown={() => setIsCreateClientOpen(false)}
         >
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
           <div
-            className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4"
-            style={{ maxHeight: "90vh", overflow: "auto" }}
+            className="rounded-xl shadow-2xl w-full max-w-md mx-4"
+            style={{
+              maxHeight: "90vh",
+              overflow: "auto",
+              backgroundColor: "var(--color-background-100)",
+              border: "1px solid var(--color-border-200)",
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Create new client"
+            onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
           >
-            <div className="p-5 border-b" style={{ borderColor: "#e5e7eb" }}>
-              <h3 className="text-base font-semibold" style={{ color: "#111827" }}>
+            <div className="p-5" style={{ borderBottom: "1px solid var(--color-border-200)" }}>
+              <h3 className="text-base font-semibold" style={{ color: "var(--color-text-100)" }}>
                 New Client
               </h3>
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: "#374151" }}>
+                <label
+                  htmlFor="tkx-client-name"
+                  className="block text-sm font-medium mb-1"
+                  style={{ color: "var(--color-text-200)" }}
+                >
                   Client Name
                 </label>
                 <input
+                  id="tkx-client-name"
                   type="text"
                   value={newClientName}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewClientName(e.target.value)}
                   placeholder="e.g., Acme Corp"
-                  autoFocus
                   onKeyDown={(e: React.KeyboardEvent) => {
-                    if (e.key === "Enter") handleCreateClient();
+                    if (e.key === "Enter") void handleCreateClient();
                     if (e.key === "Escape") setIsCreateClientOpen(false);
                   }}
+                  className="w-full rounded-lg text-sm outline-none"
                   style={{
-                    width: "100%",
                     padding: "8px 12px",
-                    border: "1px solid #d1d5db",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    outline: "none",
-                    color: "#111827",
-                    backgroundColor: "#fff",
+                    border: "1px solid var(--color-border-200)",
+                    color: "var(--color-text-100)",
+                    backgroundColor: "var(--color-background-90)",
                   }}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: "#374151" }}>
+                <label
+                  htmlFor="tkx-client-color"
+                  className="block text-sm font-medium mb-1"
+                  style={{ color: "var(--color-text-200)" }}
+                >
                   Color
                 </label>
-                <div className="flex gap-2 flex-wrap">
+                <div id="tkx-client-color" className="flex gap-2 flex-wrap" role="radiogroup">
                   {CLIENT_COLORS.map((c: string) => (
                     <button
                       key={c}
@@ -303,8 +317,8 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
                         height: "24px",
                         borderRadius: "50%",
                         backgroundColor: c,
-                        border: newClientColor === c ? "2px solid #4f46e5" : "2px solid transparent",
-                        outline: newClientColor === c ? "2px solid #4f46e5" : "none",
+                        border: newClientColor === c ? "2px solid #818CF8" : "2px solid transparent",
+                        outline: newClientColor === c ? "2px solid #818CF8" : "none",
                         outlineOffset: "2px",
                         cursor: "pointer",
                       }}
@@ -313,27 +327,19 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
                 </div>
               </div>
             </div>
-            <div className="flex gap-2 justify-end p-5" style={{ borderTop: "1px solid #e5e7eb" }}>
+            <div className="flex gap-2 justify-end p-5" style={{ borderTop: "1px solid var(--color-border-200)" }}>
               <button
                 type="button"
                 onClick={() => {
                   setIsCreateClientOpen(false);
                   setNewClientName("");
                 }}
+                className="rounded-lg cursor-pointer border-none transition-colors"
                 style={{
                   padding: "6px 12px",
                   fontSize: "14px",
-                  color: "#6b7280",
-                  borderRadius: "8px",
-                  cursor: "pointer",
+                  color: "var(--color-text-300)",
                   backgroundColor: "transparent",
-                  border: "none",
-                }}
-                onMouseOver={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  e.currentTarget.style.backgroundColor = "#f3f4f6";
-                }}
-                onMouseOut={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  e.currentTarget.style.backgroundColor = "transparent";
                 }}
               >
                 Cancel
@@ -341,15 +347,16 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
               <button
                 type="button"
                 disabled={isCreatingClient || !newClientName.trim()}
-                onClick={handleCreateClient}
+                onClick={() => void handleCreateClient()}
+                className={cn(
+                  "rounded-lg border-none transition-colors",
+                  isCreatingClient || !newClientName.trim() ? "cursor-not-allowed" : "cursor-pointer"
+                )}
                 style={{
                   padding: "6px 16px",
                   fontSize: "14px",
-                  backgroundColor: isCreatingClient || !newClientName.trim() ? "#9ca3af" : "#4f46e5",
+                  backgroundColor: isCreatingClient || !newClientName.trim() ? "#6b7280" : "#6366F1",
                   color: "#fff",
-                  borderRadius: "8px",
-                  cursor: isCreatingClient || !newClientName.trim() ? "not-allowed" : "pointer",
-                  border: "none",
                 }}
               >
                 {isCreatingClient ? "Creating..." : "Create Client"}
@@ -445,6 +452,7 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
                           projectIds={projectIds}
                           handleCopyText={handleCopyText}
                           handleOnProjectDrop={handleOnProjectDrop}
+                          onClientChanged={refetchClients}
                         />
                       ))}
                       {/* Unassigned projects */}
@@ -455,6 +463,7 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
                           projectIds={clientGroups.unassigned}
                           handleCopyText={handleCopyText}
                           handleOnProjectDrop={handleOnProjectDrop}
+                          onClientChanged={refetchClients}
                         />
                       )}
                     </>

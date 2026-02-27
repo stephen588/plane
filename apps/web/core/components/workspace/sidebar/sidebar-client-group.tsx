@@ -20,6 +20,7 @@ type Props = {
   client: TClient | null; // null means "Unassigned"
   projectIds: string[];
   handleCopyText: (projectId: string) => void;
+  onClientChanged?: () => void;
   handleOnProjectDrop: (
     sourceId: string | undefined,
     destinationId: string | undefined,
@@ -28,7 +29,7 @@ type Props = {
 };
 
 export const SidebarClientGroup = observer(function SidebarClientGroup(props: Props) {
-  const { client, projectIds, handleCopyText, handleOnProjectDrop } = props;
+  const { client, projectIds, handleCopyText, handleOnProjectDrop, onClientChanged } = props;
   const pathname = usePathname();
   const { workspaceSlug } = useParams();
 
@@ -56,24 +57,28 @@ export const SidebarClientGroup = observer(function SidebarClientGroup(props: Pr
   }, [pathname, projectIds, storageKey]);
 
   // When a project is created, auto-assign it to this client then reload
-  const handleProjectCreated = useCallback(async (projectId: string) => {
-    if (!client) return;
-    try {
-      await fetch(`/templates/api/clients/${client.id}/projects`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ project_id: projectId }),
-      });
-      console.log(`[TKX] Auto-assigned project ${projectId} to client ${client.name}`);
-    } catch (err) {
-      console.error("[TKX] Failed to assign project to client:", err);
-    }
-  }, [client]);
+  const handleProjectCreated = useCallback(
+    async (projectId: string) => {
+      if (!client) return;
+      try {
+        await fetch(`/templates/api/clients/${client.id}/projects`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project_id: projectId }),
+        });
+        console.log(`[TKX] Auto-assigned project ${projectId} to client ${client.name}`);
+        onClientChanged?.();
+      } catch (err) {
+        console.error("[TKX] Failed to assign project to client:", err);
+      }
+    },
+    [client, onClientChanged]
+  );
 
   const handleModalClose = () => {
     setIsCreateProjectOpen(false);
-    // Reload to pick up the new project + client assignment
-    setTimeout(() => window.location.reload(), 500);
+    // Refresh client list without page reload
+    onClientChanged?.();
   };
 
   if (projectIds.length === 0 && !client) return null;
@@ -89,7 +94,7 @@ export const SidebarClientGroup = observer(function SidebarClientGroup(props: Pr
           onClose={handleModalClose}
           setToFavorite={false}
           workspaceSlug={workspaceSlug.toString()}
-          onProjectCreated={handleProjectCreated}
+          onProjectCreated={(projectId: string) => void handleProjectCreated(projectId)}
         />
       )}
       <Disclosure as="div" className="flex flex-col" defaultOpen={isOpen}>
@@ -100,10 +105,7 @@ export const SidebarClientGroup = observer(function SidebarClientGroup(props: Pr
             className="w-full flex items-center gap-1.5 whitespace-nowrap text-left text-12 font-medium text-tertiary"
             onClick={() => toggleOpen(!isOpen)}
           >
-            <span
-              className="flex-shrink-0 size-2.5 rounded-full"
-              style={{ backgroundColor: groupColor }}
-            />
+            <span className="flex-shrink-0 size-2.5 rounded-full" style={{ backgroundColor: groupColor }} />
             <span className="truncate">{groupName}</span>
             <span className="text-11 text-placeholder ml-0.5">({projectIds.length})</span>
           </Disclosure.Button>
@@ -145,18 +147,24 @@ export const SidebarClientGroup = observer(function SidebarClientGroup(props: Pr
         >
           {isOpen && (
             <Disclosure.Panel as="div" className="flex flex-col gap-0.5 pl-1" static>
-              {projectIds.map((projectId, index) => (
-                <SidebarProjectsListItem
-                  key={projectId}
-                  projectId={projectId}
-                  handleCopyText={() => handleCopyText(projectId)}
-                  projectListType={"JOINED"}
-                  disableDrag={false}
-                  disableDrop={false}
-                  isLastChild={index === projectIds.length - 1}
-                  handleOnProjectDrop={handleOnProjectDrop}
-                />
-              ))}
+              {projectIds.length > 0 ? (
+                projectIds.map((projectId, index) => (
+                  <SidebarProjectsListItem
+                    key={projectId}
+                    projectId={projectId}
+                    handleCopyText={() => handleCopyText(projectId)}
+                    projectListType={"JOINED"}
+                    disableDrag={false}
+                    disableDrop={false}
+                    isLastChild={index === projectIds.length - 1}
+                    handleOnProjectDrop={handleOnProjectDrop}
+                  />
+                ))
+              ) : (
+                <div className="px-2 py-1.5 text-12 italic" style={{ color: "var(--color-text-400)" }}>
+                  No projects yet
+                </div>
+              )}
             </Disclosure.Panel>
           )}
         </Transition>
