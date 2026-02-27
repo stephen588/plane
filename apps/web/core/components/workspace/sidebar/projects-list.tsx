@@ -2,9 +2,11 @@
  * Copyright (c) 2023-present Plane Software, Inc. and contributors
  * SPDX-License-Identifier: AGPL-3.0-only
  * See the LICENSE file for details.
+ *
+ * Modified by TKX Media: Added client grouping to sidebar
  */
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
 import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
 import { observer } from "mobx-react";
@@ -29,10 +31,12 @@ import { useCommandPalette } from "@/hooks/store/use-command-palette";
 import { useProject } from "@/hooks/store/use-project";
 import { useUserPermissions } from "@/hooks/store/user";
 import { useProjectNavigationPreferences } from "@/hooks/use-navigation-preferences";
+import { useClients } from "@/hooks/use-clients";
 // plane web imports
 import type { TProject } from "@/plane-web/types";
 // local imports
 import { SidebarProjectsListItem } from "./projects-list-item";
+import { SidebarClientGroup } from "./sidebar-client-group";
 
 export const SidebarProjectsList = observer(function SidebarProjectsList() {
   // states
@@ -53,6 +57,9 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
   const { workspaceSlug } = useParams();
   const pathname = usePathname();
 
+  // TKX: Client grouping
+  const { clients, isLoading: isClientsLoading, unassignedProjectIds } = useClients();
+
   // auth
   const isAuthorizedUser = allowPermissions(
     [EUserPermissions.ADMIN, EUserPermissions.MEMBER],
@@ -67,6 +74,38 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
   // Check if there are more projects to show
   const hasMoreProjects =
     projectPreferences.showLimitedProjects && joinedProjects.length > projectPreferences.limitedProjectsCount;
+
+  // TKX: Group projects by client
+  const clientGroups = useMemo(() => {
+    const displayedSet = new Set(displayedProjects);
+
+    // Build groups for each client
+    const groups = clients
+      .map((client) => {
+        const clientProjectIds = client.projects
+          .map((cp) => cp.project_id)
+          .filter((pid) => displayedSet.has(pid));
+        // Sort client projects by the order they appear in displayedProjects
+        clientProjectIds.sort(
+          (a, b) => displayedProjects.indexOf(a) - displayedProjects.indexOf(b)
+        );
+        return { client, projectIds: clientProjectIds };
+      })
+      .filter((g) => g.projectIds.length > 0);
+
+    // Sort groups by client sort_order then name
+    groups.sort((a, b) => {
+      if (a.client.sort_order !== b.client.sort_order) {
+        return a.client.sort_order - b.client.sort_order;
+      }
+      return a.client.name.localeCompare(b.client.name);
+    });
+
+    // Unassigned projects
+    const unassigned = unassignedProjectIds(displayedProjects);
+
+    return { groups, unassigned };
+  }, [clients, displayedProjects, unassignedProjectIds]);
 
   const handleCopyText = (projectId: string) => {
     copyUrlToClipboard(`${workspaceSlug}/projects/${projectId}/issues`).then(() => {
@@ -153,6 +192,10 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
       localStorage.setItem("isAllProjectsListOpen", "true");
     }
   }, [pathname]);
+
+  // Determine if we have client data to show grouped view
+  const hasClients = clients.length > 0;
+
   return (
     <>
       {workspaceSlug && (
@@ -183,7 +226,7 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
                     : "aria_labels.projects_sidebar.open_projects_menu"
                 )}
               >
-                <span className="text-13 font-semibold">{t("projects")}</span>
+                <span className="text-13 font-semibold">{hasClients ? "Clients" : t("projects")}</span>
               </Disclosure.Button>
               <div className="flex items-center gap-1">
                 {isAuthorizedUser && (
@@ -236,38 +279,64 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
               )}
               {isAllProjectsListOpen && (
                 <Disclosure.Panel as="div" className="flex flex-col gap-0.5" static>
-                  <>
-                    {displayedProjects.map((projectId, index) => (
-                      <SidebarProjectsListItem
-                        key={projectId}
-                        projectId={projectId}
-                        handleCopyText={() => handleCopyText(projectId)}
-                        projectListType={"JOINED"}
-                        disableDrag={false}
-                        disableDrop={false}
-                        isLastChild={index === displayedProjects.length - 1}
-                        handleOnProjectDrop={handleOnProjectDrop}
-                      />
-                    ))}
-                    {hasMoreProjects && (
-                      <SidebarNavItem>
-                        <button
-                          type="button"
-                          onClick={() => toggleExtendedProjectSidebar()}
-                          className="flex items-center gap-1.5 text-13 font-medium flex-grow text-tertiary"
-                          id="extended-project-sidebar-toggle"
-                          aria-label={t(
-                            isExtendedProjectSidebarOpened
-                              ? "aria_labels.app_sidebar.close_extended_sidebar"
-                              : "aria_labels.app_sidebar.open_extended_sidebar"
-                          )}
-                        >
-                          <Ellipsis className="flex-shrink-0 size-4" />
-                          <span>{isExtendedProjectSidebarOpened ? "Hide" : "More"}</span>
-                        </button>
-                      </SidebarNavItem>
-                    )}
-                  </>
+                  {hasClients ? (
+                    <>
+                      {/* Client-grouped projects */}
+                      {clientGroups.groups.map(({ client, projectIds }) => (
+                        <SidebarClientGroup
+                          key={client.id}
+                          client={client}
+                          projectIds={projectIds}
+                          handleCopyText={handleCopyText}
+                          handleOnProjectDrop={handleOnProjectDrop}
+                        />
+                      ))}
+                      {/* Unassigned projects */}
+                      {clientGroups.unassigned.length > 0 && (
+                        <SidebarClientGroup
+                          key="unassigned"
+                          client={null}
+                          projectIds={clientGroups.unassigned}
+                          handleCopyText={handleCopyText}
+                          handleOnProjectDrop={handleOnProjectDrop}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* Fallback: Original flat project list when no clients exist */}
+                      {displayedProjects.map((projectId, index) => (
+                        <SidebarProjectsListItem
+                          key={projectId}
+                          projectId={projectId}
+                          handleCopyText={() => handleCopyText(projectId)}
+                          projectListType={"JOINED"}
+                          disableDrag={false}
+                          disableDrop={false}
+                          isLastChild={index === displayedProjects.length - 1}
+                          handleOnProjectDrop={handleOnProjectDrop}
+                        />
+                      ))}
+                    </>
+                  )}
+                  {hasMoreProjects && (
+                    <SidebarNavItem>
+                      <button
+                        type="button"
+                        onClick={() => toggleExtendedProjectSidebar()}
+                        className="flex items-center gap-1.5 text-13 font-medium flex-grow text-tertiary"
+                        id="extended-project-sidebar-toggle"
+                        aria-label={t(
+                          isExtendedProjectSidebarOpened
+                            ? "aria_labels.app_sidebar.close_extended_sidebar"
+                            : "aria_labels.app_sidebar.open_extended_sidebar"
+                        )}
+                      >
+                        <Ellipsis className="flex-shrink-0 size-4" />
+                        <span>{isExtendedProjectSidebarOpened ? "Hide" : "More"}</span>
+                      </button>
+                    </SidebarNavItem>
+                  )}
                 </Disclosure.Panel>
               )}
             </Transition>
