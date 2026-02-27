@@ -95,7 +95,8 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
       setNewClientName("");
       setNewClientColor("#6366F1");
       setIsCreateClientOpen(false);
-      refetchClients();
+      // Reload page to refresh sidebar with new client
+      setTimeout(() => window.location.reload(), 300);
     } catch (err) {
       console.error("Failed to create client:", err);
     } finally {

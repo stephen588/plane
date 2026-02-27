@@ -1,4 +1,56 @@
-/**
+#!/usr/bin/env python3
+"""
+Fix 3 issues:
+1. CreateProjectModal: add onProjectCreated callback prop
+2. sidebar-client-group: use onProjectCreated to auto-assign project to client
+3. projects-list: refetch clients after creating a client (force page reload)
+"""
+
+# ============================================================
+# 1. Add onProjectCreated callback to CreateProjectModal
+# ============================================================
+path1 = "/opt/plane-fork/apps/web/core/components/project/create-project-modal.tsx"
+with open(path1, "r") as f:
+    c = f.read()
+
+# Add to Props type
+c = c.replace(
+    "  templateId?: string;\n};",
+    "  templateId?: string;\n  onProjectCreated?: (projectId: string) => void;\n};"
+)
+
+# Destructure the new prop
+c = c.replace(
+    "const { isOpen, onClose, setToFavorite = false, workspaceSlug, data, templateId } = props;",
+    "const { isOpen, onClose, setToFavorite = false, workspaceSlug, data, templateId, onProjectCreated } = props;"
+)
+
+# Call the callback in handleNextStep
+c = c.replace(
+    """  const handleNextStep = (projectId: string) => {
+    if (!projectId) return;
+    setCreatedProjectId(projectId);
+    setCurrentStep(EProjectCreationSteps.FEATURE_SELECTION);
+  };""",
+    """  const handleNextStep = (projectId: string) => {
+    if (!projectId) return;
+    setCreatedProjectId(projectId);
+    setCurrentStep(EProjectCreationSteps.FEATURE_SELECTION);
+    // TKX: notify parent about the new project
+    if (onProjectCreated) onProjectCreated(projectId);
+  };"""
+)
+
+with open(path1, "w") as f:
+    f.write(c)
+print("1. CreateProjectModal: onProjectCreated callback added")
+
+# ============================================================
+# 2. Fix sidebar-client-group to auto-assign project to client
+# ============================================================
+path2 = "/opt/plane-fork/apps/web/core/components/workspace/sidebar/sidebar-client-group.tsx"
+
+new_content = '''/**
  * TKX Media - Client group accordion for the sidebar
  * + button opens Create Project modal; newly created projects auto-assign to this client
  */
@@ -164,3 +216,35 @@ export const SidebarClientGroup = observer(function SidebarClientGroup(props: Pr
     </>
   );
 });
+'''
+
+with open(path2, "w") as f:
+    f.write(new_content)
+print("2. sidebar-client-group: auto-assigns project on creation + reloads")
+
+# ============================================================
+# 3. Fix projects-list: reload after creating client
+# ============================================================
+path3 = "/opt/plane-fork/apps/web/core/components/workspace/sidebar/projects-list.tsx"
+with open(path3, "r") as f:
+    c3 = f.read()
+
+# Find handleCreateClient and add reload after success
+old_handler = '''      setNewClientName("");
+      setNewClientColor("#6366F1");
+      setIsCreateClientOpen(false);
+      refetchClients();'''
+
+new_handler = '''      setNewClientName("");
+      setNewClientColor("#6366F1");
+      setIsCreateClientOpen(false);
+      // Reload page to refresh sidebar with new client
+      setTimeout(() => window.location.reload(), 300);'''
+
+c3 = c3.replace(old_handler, new_handler)
+
+with open(path3, "w") as f:
+    f.write(c3)
+print("3. projects-list: page reloads after creating client")
+print("")
+print("All fixes applied!")
