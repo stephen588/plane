@@ -43,6 +43,11 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
   const [isAllProjectsListOpen, setIsAllProjectsListOpen] = useState(true);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false); // scroll animation state
+  // TKX: Create client state
+  const [isCreateClientOpen, setIsCreateClientOpen] = useState(false);
+  const [newClientName, setNewClientName] = useState("");
+  const [newClientColor, setNewClientColor] = useState("#6366F1");
+  const [isCreatingClient, setIsCreatingClient] = useState(false);
   // refs
   const containerRef = useRef<HTMLDivElement | null>(null);
   // store hooks
@@ -58,7 +63,37 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
   const pathname = usePathname();
 
   // TKX: Client grouping
-  const { clients, isLoading: isClientsLoading, unassignedProjectIds } = useClients();
+  const { clients, isLoading: isClientsLoading, unassignedProjectIds, refetch: refetchClients } = useClients();
+
+  const CLIENT_COLORS = [
+    "#6366F1", "#8B5CF6", "#EC4899", "#EF4444", "#F59E0B",
+    "#22C55E", "#06B6D4", "#3B82F6", "#F97316", "#14B8A6",
+  ];
+
+  const handleCreateClient = async () => {
+    if (!newClientName.trim()) return;
+    setIsCreatingClient(true);
+    try {
+      const resp = await fetch("/templates/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newClientName.trim(),
+          workspace_id: "0f692c12-0770-4325-a298-902f8036dfe7",
+          color: newClientColor,
+        }),
+      });
+      if (!resp.ok) throw new Error("Failed to create client");
+      setNewClientName("");
+      setNewClientColor("#6366F1");
+      setIsCreateClientOpen(false);
+      refetchClients();
+    } catch (err) {
+      console.error("Failed to create client:", err);
+    } finally {
+      setIsCreatingClient(false);
+    }
+  };
 
   // auth
   const isAuthorizedUser = allowPermissions(
@@ -206,6 +241,61 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
           workspaceSlug={workspaceSlug.toString()}
         />
       )}
+      {/* TKX: Create Client Modal */}
+      {isCreateClientOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div className="p-5 border-b border-gray-100 dark:border-gray-800">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">New Client</h3>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Client Name</label>
+                <input
+                  type="text"
+                  value={newClientName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewClientName(e.target.value)}
+                  placeholder="e.g., Acme Corp"
+                  autoFocus
+                  onKeyDown={(e: React.KeyboardEvent) => { if (e.key === "Enter") handleCreateClient(); if (e.key === "Escape") setIsCreateClientOpen(false); }}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Color</label>
+                <div className="flex gap-2 flex-wrap">
+                  {CLIENT_COLORS.map((c: string) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setNewClientColor(c)}
+                      className={`w-6 h-6 rounded-full transition-all ${newClientColor === c ? "ring-2 ring-offset-2 ring-indigo-500 scale-110" : "hover:scale-105"}`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-800 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => { setIsCreateClientOpen(false); setNewClientName(""); }}
+                className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isCreatingClient || !newClientName.trim()}
+                onClick={handleCreateClient}
+                className="px-4 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {isCreatingClient ? "Creating..." : "Create Client"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div
         ref={containerRef}
         className={cn({
@@ -230,17 +320,21 @@ export const SidebarProjectsList = observer(function SidebarProjectsList() {
               </Disclosure.Button>
               <div className="flex items-center gap-1">
                 {isAuthorizedUser && (
-                  <Tooltip tooltipHeading={t("create_project")} tooltipContent="">
+                  <Tooltip tooltipHeading={hasClients ? "Add Client" : t("create_project")} tooltipContent="">
                     <IconButton
                       variant="ghost"
                       size="sm"
                       icon={PlusIcon}
                       onClick={() => {
-                        setIsProjectModalOpen(true);
+                        if (hasClients) {
+                          setIsCreateClientOpen(true);
+                        } else {
+                          setIsProjectModalOpen(true);
+                        }
                       }}
                       data-ph-element={PROJECT_TRACKER_ELEMENTS.SIDEBAR_CREATE_PROJECT_TOOLTIP}
                       className="hidden group-hover:inline-flex text-placeholder"
-                      aria-label={t("aria_labels.projects_sidebar.create_new_project")}
+                      aria-label={hasClients ? "Add Client" : t("aria_labels.projects_sidebar.create_new_project")}
                     />
                   </Tooltip>
                 )}
